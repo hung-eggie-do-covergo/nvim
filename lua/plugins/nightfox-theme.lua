@@ -51,13 +51,31 @@ return {
       -- process) and it tracks herdr's theme rather than second-guessing it.
       -- Only inside herdr — every other terminal pushes the change already.
       if vim.env.HERDR_PANE_ID then
+        -- nvim reads the reply only when a UI was attached at startup; the
+        -- sidebar's headless nvim had none, so read it here too.
+        vim.api.nvim_create_autocmd("TermResponse", {
+          callback = function(ev)
+            local r, g, b = ev.data.sequence:match("^\27%]11;rgb:(%x+)/(%x+)/(%x+)")
+            if not r then
+              return
+            end
+            local function c(h)
+              return tonumber(h, 16) / (16 ^ #h - 1)
+            end
+            local bg = (0.299 * c(r) + 0.587 * c(g) + 0.114 * c(b)) < 0.5 and "dark" or "light"
+            if vim.o.background ~= bg then
+              vim.o.background = bg
+            end
+          end,
+        })
         local timer = vim.uv.new_timer()
         timer:start(
           2000,
           2000,
           vim.schedule_wrap(function()
-            io.stdout:write("\27]11;?\27\\")
-            io.stdout:flush()
+            -- nvim_ui_send reaches the attached UI; stdout is not the terminal
+            -- in the herdr sidebar, whose nvim runs headless behind --remote-ui.
+            vim.api.nvim_ui_send("\27]11;?\27\\")
           end)
         )
       end
